@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commercial Invoice Generator</title>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 2px dashed #ddd;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        input[type="file"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .results-section {
+            margin-top: 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .total-row {
+            background-color: #e9ecef !important;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .file-info {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Commercial Invoice Generator</h1>
+        
+        <div class="upload-section">
+            <div class="input-group">
+                <label for="excelFile">Upload Excel File:</label>
+                <input type="file" id="excelFile" accept=".xlsx, .xls">
+            </div>
+            
+            <div class="input-group">
+                <label for="percentage">Percentage (e.g., 0.25 for 25%):</label>
+                <input type="number" id="percentage" step="0.01" min="0" max="1" value="0.25">
+            </div>
+            
+            <button onclick="processFile()" id="processBtn">Calculate Commercial Invoice</button>
+        </div>
+
+        <div id="message"></div>
+        <div id="fileInfo"></div>
+
+        <div class="results-section">
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        function processFile() {
+            const fileInput = document.getElementById('excelFile');
+            const percentageInput = document.getElementById('percentage');
+            const processBtn = document.getElementById('processBtn');
+            const messageDiv = document.getElementById('message');
+            const fileInfoDiv = document.getElementById('fileInfo');
+            const resultsDiv = document.getElementById('results');
+
+            // Reset displays
+            messageDiv.innerHTML = '';
+            fileInfoDiv.innerHTML = '';
+            resultsDiv.innerHTML = '';
+
+            const file = fileInput.files[0];
+            const percentage = parseFloat(percentageInput.value);
+
+            // Validation
+            if (!file) {
+                showMessage('Please select an Excel file.', 'error');
+                return;
+            }
+
+            if (isNaN(percentage) || percentage <= 0 || percentage > 1) {
+                showMessage('Please enter a valid percentage between 0 and 1 (e.g., 0.25 for 25%).', 'error');
+                return;
+            }
+
+            // Show loading
+            processBtn.disabled = true;
+            processBtn.textContent = 'Processing...';
+            resultsDiv.innerHTML = '<div class="loading">Processing Excel file...</div>';
+
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // Assuming first sheet
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Convert to JSON
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    // Process data
+                    const result = processExcelData(jsonData, percentage);
+                    displayResults(result);
+                    
+                    showMessage('Commercial invoice generated successfully!', 'success');
+                    showFileInfo(file.name, result.totalItems, result.totalQty, result.totalAmount);
+                    
+                } catch (error) {
+                    showMessage('Error processing file: ' + error.message, 'error');
+                    console.error(error);
+                } finally {
+                    processBtn.disabled = false;
+                    processBtn.textContent = 'Calculate Commercial Invoice';
+                }
+            };
+            
+            reader.onerror = function() {
+                showMessage('Error reading file.', 'error');
+                processBtn.disabled = false;
+                processBtn.textContent = 'Calculate Commercial Invoice';
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processExcelData(jsonData, percentage) {
+            // Find header row
+            let headerRowIndex = -1;
+            let headers = [];
+            
+            for (let i = 0; i < jsonData.length; i++) {
+                if (jsonData[i].length > 0 && 
+                    jsonData[i].some(cell => cell && cell.toString().toLowerCase().includes('origin')) &&
+                    jsonData[i].some(cell => cell && cell.toString().toLowerCase().includes('category')) &&
+                    jsonData[i].some(cell => cell && cell.toString().toLowerCase().includes('qty'))) {
+                    headerRowIndex = i;
+                    headers = jsonData[i].map(h => h ? h.toString().toLowerCase() : '');
+                    break;
+                }
+            }
+            
+            if (headerRowIndex === -1) {
+                throw new Error('Could not find header row with required columns (ORIGIN, CATEGORY, QTY, UNIT PRICE)');
+            }
+
+            // Find column indices
+            const originIndex = headers.findIndex(h => h.includes('origin'));
+            const categoryIndex = headers.findIndex(h => h.includes('category'));
+            const qtyIndex = headers.findIndex(h => h.includes('qty') && !h.includes('box'));
+            const unitPriceIndex = headers.findIndex(h => h.includes('unit') && h.includes('price'));
+            
+            if (originIndex === -1 || categoryIndex === -1 || qtyIndex === -1 || unitPriceIndex === -1) {
+                throw new Error('Required columns not found. Need: ORIGIN, CATEGORY, QTY, UNIT PRICE $');
+            }
+
+            // Process data rows
+            const groupedData = {};
+            let totalQty = 0;
+            let totalAmount = 0;
+            let totalItems = 0;
+
+            for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length === 0) continue;
+
+                const origin = row[originIndex] ? row[originIndex].toString().trim() : '';
+                const category = row[categoryIndex] ? row[categoryIndex].toString().trim() : '';
+                const qty = parseFloat(row[qtyIndex]) || 0;
+                const unitPrice = parseFloat(row[unitPriceIndex]) || 0;
+
+                if (!origin || !category || qty <= 0) continue;
+
+                const key = `${origin}|${category}`;
+                
+                if (!groupedData[key]) {
+                    groupedData[key] = {
+                        origin: origin,
+                        category: category,
+                        totalQty: 0,
+                        sumUnitPrice: 0,
+                        count: 0,
+                        totalAmount: 0
+                    };
+                }
+
+                groupedData[key].totalQty += qty;
+                groupedData[key].sumUnitPrice += unitPrice;
+                groupedData[key].count++;
+                totalItems++;
+            }
+
+            // Calculate final unit price and total amount
+            const results = [];
+            for (const key in groupedData) {
+                const item = groupedData[key];
+                const avgUnitPrice = item.sumUnitPrice / item.count;
+                const finalUnitPrice = avgUnitPrice * percentage;
+                const totalAmountItem = finalUnitPrice * item.totalQty;
+
+                item.finalUnitPrice = parseFloat(finalUnitPrice.toFixed(2));
+                item.totalAmount = parseFloat(totalAmountItem.toFixed(2));
+
+                totalQty += item.totalQty;
+                totalAmount += item.totalAmount;
+
+                results.push(item);
+            }
+
+            // Sort by CATEGORY first, then by ORIGIN
+            results.sort((a, b) => {
+                if (a.category !== b.category) {
+                    return a.category.localeCompare(b.category);
+                }
+                return a.origin.localeCompare(b.origin);
+            });
+
+            return {
+                items: results,
+                totalQty: totalQty,
+                totalAmount: parseFloat(totalAmount.toFixed(2)),
+                totalItems: totalItems
+            };
+        }
+
+        function displayResults(result) {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = `
+                <h2>COMMERCIAL INVOICE</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>ORIGIN</th>
+                            <th>CATEGORY</th>
+                            <th>QTY</th>
+                            <th>UNIT</th>
+                            <th>UNIT PRICE $</th>
+                            <th>TOTAL AMOUNT $</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            result.items.forEach((item, index) => {
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${item.origin}</td>
+                        <td>${item.category}</td>
+                        <td>${item.totalQty}</td>
+                        <td>PCS</td>
+                        <td>${item.finalUnitPrice.toFixed(2)}</td>
+                        <td>${item.totalAmount.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    <tr class="total-row">
+                        <td colspan="3">TOTAL</td>
+                        <td>${result.totalQty}</td>
+                        <td>TOTAL</td>
+                        <td></td>
+                        <td>${result.totalAmount.toFixed(2)}</td>
+                    </tr>
+                </tbody>
+            </table>
+            `;
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        function showFileInfo(filename, totalItems, totalQty, totalAmount) {
+            const fileInfoDiv = document.getElementById('fileInfo');
+            fileInfoDiv.innerHTML = `
+                <div class="file-info">
+                    <strong>File:</strong> ${filename} | 
+                    <strong>Items Processed:</strong> ${totalItems} | 
+                    <strong>Total Quantity:</strong> ${totalQty} | 
+                    <strong>Total Amount:</strong> $${totalAmount.toFixed(2)}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
